@@ -26,5 +26,4 @@ coverage.txt
 bak.*
 
 /cmd/excel/main
-/cmd/test.go
 /cmd/notification/main

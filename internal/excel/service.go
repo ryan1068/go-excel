@@ -14,7 +14,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,7 +25,7 @@ import (
 
 var workerNum = 4 //同时运行的工作协程
 
-var pageSize int64 = 100 //分页一次获取数据量
+var pageSize int64 = 100 //每页数据量
 
 type Service struct {
 	cfg     *config.Config
@@ -55,20 +54,14 @@ func (s *Service) createTask(form *ImportForm) (string, error) {
 		}
 		// Get all the rows in the Sheet1.
 		rows, err := f.GetRows("Sheet1")
-		log.Println(len(rows))
 		if err != nil {
 			return "", nil, "", err
 		}
 
 		rows = s.handleRows(rows)
-		log.Println(rows, len(rows))
-
 		mapping := strings.Split(form.Mapping, ",")
 		if len(mapping) != len(rows[0]) {
 			return "", nil, "", errors.New("上传Excel中表头格式设置不正确")
-		}
-		if len(rows) > 5001 {
-			return "", nil, "", errors.New("上传Excel中总行数不能大于5000条")
 		}
 
 		apiHost := s.getApiHost(form.ApiHost)
