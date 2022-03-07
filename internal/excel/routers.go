@@ -25,7 +25,6 @@ func (r Routers) Register(router *gin.RouterGroup) {
 	router.GET("/clear-task", r.ClearTask)
 	router.POST("/import", r.Import)
 	router.POST("/export", r.Export)
-	router.GET("/test", r.Test)
 }
 
 func (r Routers) Import(c *gin.Context) {
@@ -144,13 +143,5 @@ func (r Routers) Export(c *gin.Context) {
 		"data": gin.H{
 			"task_id": taskId,
 		},
-	})
-}
-
-func (r Routers) Test(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"code": http.StatusOK,
-		"msg":  "ok",
-		"data": gin.H{},
 	})
 }
