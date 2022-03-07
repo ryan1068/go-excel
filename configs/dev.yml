@@ -1,0 +1,37 @@
+application:
+  env: dev
+  host: 0.0.0.0
+  port: 9251
+
+mysqldb:
+  ip: 127.0.0.1
+  port: 3306
+  username: root
+  password: root
+  database:
+
+mongodb:
+  ip: 127.0.0.1
+  port: 27017
+  username:
+  password:
+  options:
+  database: cst_ucenter
+
+redis:
+  hostname: 127.0.0.1
+  port: 6379
+  database: 0
+  password:
+
+oss:
+  url:
+
+apiHost:
+  storeapiMicro: http://127.0.0.1:8307
+  groupapiMicro: http://127.0.0.1:8308
+  storeapi: http://127.0.0.1:8302
+  groupapi: http://127.0.0.1:8301
+
+intranet:
+  ip: http://127.0.0.1
