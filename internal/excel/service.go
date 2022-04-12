@@ -25,7 +25,7 @@ import (
 
 var workerNum = 4 //同时运行的工作协程
 
-var pageSize int64 = 100 //每页数据量
+var pageSize int64 = 100 //获取数据的每页数据量
 
 type Service struct {
 	cfg     *config.Config
@@ -161,7 +161,7 @@ func (s *Service) importExcel(form *ImportForm, filePath string, rows [][]string
 	return nil
 }
 
-// 产生任务
+// 生产任务
 func (s *Service) producer(rows [][]string, taskChan chan<- []string) {
 	for i, row := range rows {
 		if i == 0 {
@@ -172,7 +172,7 @@ func (s *Service) producer(rows [][]string, taskChan chan<- []string) {
 	close(taskChan)
 }
 
-// 处理任务
+// 消费任务
 func (s *Service) worker(form *ImportForm, taskChan <-chan []string, resChan chan<- Result, doneChan chan struct{}) {
 	for i := 0; i < workerNum; i++ {
 		go func() {
