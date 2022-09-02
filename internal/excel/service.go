@@ -208,9 +208,9 @@ func (s *Service) handleRows(rows [][]string) [][]string {
 		if row == nil {
 			continue
 		}
-		if len(row) != len(rows[0]) {
-			continue
-		}
+		//if len(row) != len(rows[0]) {
+		//	continue
+		//}
 		validRows = append(validRows, row)
 	}
 	return validRows
@@ -376,9 +376,19 @@ func (s *Service) getProgress(taskId string) map[string]interface{} {
 func (s *Service) buildApiDataMap(form *ImportForm, row []string) map[string]interface{} {
 	dataMap := map[string]interface{}{}
 	mapping := strings.Split(form.Mapping, ",")
-	for k, v := range row {
-		dataMap[strings.TrimSpace(mapping[k])] = strings.TrimSpace(v)
+	//for k, v := range row {
+	//	dataMap[strings.TrimSpace(mapping[k])] = strings.TrimSpace(v)
+	//}
+
+	for k, v := range mapping {
+		rowLen := len(row)
+		if rowLen >= k+1 {
+			dataMap[v] = strings.TrimSpace(row[k])
+		} else {
+			dataMap[v] = ""
+		}
 	}
+
 	for k, v := range form.ApiParams {
 		dataMap[strings.TrimSpace(k)] = strings.TrimSpace(v)
 	}
