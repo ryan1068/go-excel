@@ -87,7 +87,11 @@ func (s *Service) createTask(form *ImportForm) (string, error) {
 // 导入excel文件
 func (s *Service) importExcel(form *ImportForm, filePath string, rows [][]string, taskId string, logId interface{}) error {
 	newFile := excelize.NewFile()
-	index := newFile.NewSheet("Sheet1")
+	index, err := newFile.NewSheet("Sheet1")
+	if err != nil {
+		return err
+	}
+
 	if err := s.generateHeader(rows[0], newFile); err != nil {
 		return err
 	}
@@ -504,7 +508,10 @@ func (s *Service) exportExcel(form *ExportForm) (string, error) {
 func (s *Service) generateExcelFile(form *ExportForm, taskId string) error {
 
 	newFile := excelize.NewFile()
-	index := newFile.NewSheet("Sheet1")
+	index, err := newFile.NewSheet("Sheet1")
+	if err != nil {
+		return err
+	}
 
 	titles := strings.Split(form.HeaderTitle, ",")
 	for col, value := range titles {
