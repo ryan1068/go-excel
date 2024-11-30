@@ -29,10 +29,6 @@ type mongodb struct {
 	DSN      string
 }
 
-type oss struct {
-	Url string
-}
-
 type redis struct {
 	Hostname string
 	Port     string
@@ -49,6 +45,16 @@ type apiHost struct {
 
 type intranet struct {
 	Ip string
+}
+
+type oss struct {
+	Url              string
+	AccessKeyId      string
+	AccessKeySecret  string
+	Endpoint         string
+	BucketName       string
+	InternalEndPoint string
+	TimeOut          int
 }
 
 type versions struct {

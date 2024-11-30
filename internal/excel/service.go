@@ -3,6 +3,7 @@ package excel
 import (
 	"context"
 	"cst/internal/pkg/config"
+	"cst/internal/pkg/oss"
 	"cst/pkg/request"
 	"cst/pkg/utils"
 	"encoding/json"
@@ -18,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -117,13 +119,18 @@ func (s *Service) importExcel(form *ImportForm, filePath string, rows [][]string
 					if err != nil {
 						return err
 					}
-					basePath := strings.TrimLeft(errorFile, "/www/runtime/go-excel/")
-					s.redis.HSet(s.ctx, taskId, "filePath", fmt.Sprintf("%v:%v/%v", s.cfg.Intranet.Ip, s.cfg.Application.Port, basePath))
 					colStr, _ := utils.ConvertNumToCol(len(rows[0]) + 1)
 					newFile.SetColWidth("Sheet1", "A", colStr, 20)
 					if err := newFile.SaveAs(errorFile); err != nil {
 						return err
 					}
+					// 文件上传到oss
+					oss := oss.New(s.cfg)
+					url, err := oss.UploadFile(errorFile)
+					if err != nil {
+						return err
+					}
+					s.redis.HSet(s.ctx, taskId, "filePath", url)
 				}
 				s.redis.HSet(s.ctx, taskId, "isDone", 1)
 				s.updateLog(logId,
@@ -216,17 +223,6 @@ func (s *Service) handleRows(rows [][]string) [][]string {
 	return validRows
 }
 
-// 生成错误日志文件
-func (s *Service) createErrorFile(filePath string) (string, error) {
-	errlogDir := "/www/runtime/go-excel/static/" + time.Now().Format("20060102") + "/errlog"
-	if err := os.MkdirAll(errlogDir, 0755); err != nil {
-		return "", err
-	}
-
-	basePath := path.Base(filePath)
-	return errlogDir + "/" + basePath, nil
-}
-
 // 生成excel表头
 func (s *Service) generateHeader(row []string, newFile *excelize.File) error {
 	for col, value := range row {
@@ -269,9 +265,9 @@ func (s *Service) downloadExcel(path, taskType string) (string, error) {
 	return filePath, nil
 }
 
-// 生成下载文件
+// 存储上传文件
 func (s *Service) createDownloadFile(url, taskType string) (string, error) {
-	uploadDir := "/www/runtime/go-excel/static/" + time.Now().Format("20060102") + "/upload"
+	uploadDir := "/www/runtime/go-excel/static/import/upload/" + time.Now().Format("20060102")
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		return "", err
 	}
@@ -280,6 +276,17 @@ func (s *Service) createDownloadFile(url, taskType string) (string, error) {
 	ext := path.Ext(base)
 	filePath := fmt.Sprintf("%v/%v-%v%v", uploadDir, taskType, time.Now().Unix(), utils.RandStringBytes(5)+ext)
 	return filePath, nil
+}
+
+// 生成导入错误日志文件
+func (s *Service) createErrorFile(filePath string) (string, error) {
+	errlogDir := "/www/runtime/go-excel/static/import/errlog/" + time.Now().Format("20060102")
+	if err := os.MkdirAll(errlogDir, 0755); err != nil {
+		return "", err
+	}
+
+	basePath := path.Base(filePath)
+	return fmt.Sprintf("%v/%v", errlogDir, basePath), nil
 }
 
 // 获取导入任务缓存key
@@ -428,9 +435,8 @@ func (s *Service) getApiUrl(apiHost, apiPath string) string {
 }
 
 func (s *Service) log(f func() (string, [][]string, string, error), form *ImportForm) (string, [][]string, string, interface{}, error) {
-	collection := s.mongodb.Database("cst_ucenter").Collection("import_excel_log")
-
-	res, err := collection.InsertOne(s.ctx, bson.D{
+	res, err := s.insertLog(bson.D{
+		{"type", "import"},
 		{"form", form},
 		{"start_time", time.Now().Unix()},
 		{"date", time.Now().In(time.Local).Format("2006-01-02 15:04:05")},
@@ -442,14 +448,14 @@ func (s *Service) log(f func() (string, [][]string, string, error), form *Import
 	id := res.InsertedID
 	filePath, rows, taskId, err := f()
 	if err != nil {
-		collection.UpdateByID(s.ctx, id,
+		s.updateLog(id,
 			bson.D{{"$set", bson.D{
 				{"task_id", taskId},
 				{"file_path", filePath},
 				{"err", err.Error()},
 			}}})
 	} else {
-		collection.UpdateByID(s.ctx, id,
+		s.updateLog(id,
 			bson.D{{"$set", bson.D{
 				{"task_id", taskId},
 				{"file_path", filePath},
@@ -458,9 +464,14 @@ func (s *Service) log(f func() (string, [][]string, string, error), form *Import
 	return filePath, rows, taskId, id, err
 }
 
-func (s *Service) updateLog(id interface{}, update bson.D) (*mongo.UpdateResult, error) {
+func (s *Service) insertLog(log bson.D) (*mongo.InsertOneResult, error) {
 	collection := s.mongodb.Database("cst_ucenter").Collection("import_excel_log")
-	return collection.UpdateByID(s.ctx, id, update)
+	return collection.InsertOne(s.ctx, log)
+}
+
+func (s *Service) updateLog(id interface{}, log bson.D) (*mongo.UpdateResult, error) {
+	collection := s.mongodb.Database("cst_ucenter").Collection("import_excel_log")
+	return collection.UpdateByID(s.ctx, id, log)
 }
 
 // 导出excel
@@ -472,7 +483,19 @@ func (s *Service) exportExcel(form *ExportForm) (string, error) {
 	}
 
 	taskId := utils.RandStringBytes(10)
-	go s.generateExcelFile(form, taskId)
+
+	go func() {
+		err := s.generateExcelFile(form, taskId)
+		if err != nil {
+			s.insertLog(bson.D{
+				{"type", "export"},
+				{"form", form},
+				{"start_time", time.Now().Unix()},
+				{"date", time.Now().In(time.Local).Format("2006-01-02 15:04:05")},
+				{"err", err.Error()},
+			})
+		}
+	}()
 
 	return taskId, nil
 }
@@ -512,8 +535,13 @@ func (s *Service) generateExcelFile(form *ExportForm, taskId string) error {
 				if err := newFile.SaveAs(filePath); err != nil {
 					return err
 				}
-				basePath := strings.TrimLeft(filePath, "/www/runtime/go-excel/")
-				s.redis.HSet(s.ctx, taskId, "filePath", fmt.Sprintf("%v:%v/%v", s.cfg.Intranet.Ip, s.cfg.Application.Port, basePath))
+				// 文件上传到oss
+				oss := oss.New(s.cfg)
+				url, err := oss.UploadFile(filePath)
+				if err != nil {
+					return err
+				}
+				s.redis.HSet(s.ctx, taskId, "filePath", url)
 				s.redis.HSet(s.ctx, taskId, "isDone", 1)
 				return nil
 			}
@@ -620,8 +648,27 @@ func (s *Service) buildExportData(form *ExportForm, res gjson.Result) ([][]strin
 		var row []string
 		keys := strings.Split(form.HeaderKey, ",")
 		for _, v2 := range keys {
-			value := fmt.Sprintf("%v", m[v2])
-			row = append(row, value)
+
+			var value interface{}
+			if strings.Contains(v2, ".") {
+				strings := strings.Split(v2, ".")
+				if len(strings) > 2 {
+					continue
+				}
+				obj := m[strings[0]].(map[string]interface{})
+				value = obj[strings[1]]
+			} else {
+				value = m[v2]
+			}
+
+			var value2 string
+			if reflect.TypeOf(value).Kind() == reflect.Float64 {
+				value2 = fmt.Sprintf("%.0f", value)
+			} else {
+				value2 = fmt.Sprintf("%v", value)
+			}
+
+			row = append(row, value2)
 		}
 		rows = append(rows, row)
 	}

@@ -10,30 +10,50 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var ctx = context.Background()
-var flagConfig = flag.String("config", "./../configs/local.yml", "path to the config file")
+// 加载配置文件
+func loadConfig() (*config.Config, error) {
+	flagConfig := flag.String("config", "./../configs/local.yml", "path to the config file")
+	flag.Parse()
+	return config.Load(*flagConfig)
+}
 
 func main() {
-	flag.Parse()
-	cfg, err := config.Load(*flagConfig)
+	cfg, err := loadConfig()
 	if err != nil {
-		panic(err)
+		fmt.Printf("加载配置文件失败: %v\n", err)
+		return
 	}
 
+	ctx := context.Background()
+	// 连接Redis
 	redis := db.NewRedis(cfg, ctx).Connect()
-	mongodb, err := db.NewMongoDB(cfg, ctx).Open()
-	if err != nil {
-		panic(err)
-	}
 	defer func() {
-		if err = mongodb.Disconnect(ctx); err != nil {
-			panic(err)
+		if closeErr := redis.Close(); closeErr != nil {
+			fmt.Printf("关闭Redis连接失败: %v\n", closeErr)
 		}
 	}()
 
+	// 连接MongoDB
+	mongodb, err := db.NewMongoDB(cfg, ctx).Open()
+	if err != nil {
+		fmt.Printf("连接MongoDB数据库失败: %v\n", err)
+		return
+	}
+	defer func() {
+		if closeErr := mongodb.Disconnect(context.Background()); closeErr != nil {
+			fmt.Printf("关闭MongoDB连接失败: %v\n", closeErr)
+		}
+	}()
+
+	// 创建Gin框架实例
 	r := gin.Default()
 	r.Static("/static", "/www/runtime/go-excel/static")
-	excel.New(cfg, redis, mongodb, ctx).Register(r.Group("/excel"))
 
-	r.Run(fmt.Sprintf(":%s", cfg.Application.Port))
+	// 注册Excel相关路由
+	excel.New(cfg, redis, mongodb, context.Background()).Register(r.Group("/excel"))
+
+	// 启动服务
+	if err := r.Run(fmt.Sprintf(":%s", cfg.Application.Port)); err != nil {
+		fmt.Printf("启动服务失败: %v\n", err)
+	}
 }
